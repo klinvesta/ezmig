@@ -1,5 +1,6 @@
 site_name: EZMig
 site_description: SQL-first database migration tool documentation
+site_url: https://klinvesta.github.io/ezmig/
 repo_url: https://github.com/klinvesta/ezmig
 repo_name: EZMig
 
