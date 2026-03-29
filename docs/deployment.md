@@ -2,6 +2,8 @@
 
 This project uses an automated release workflow in `.github/workflows/release.yml` powered by `python-semantic-release`.
 
+Documentation is built with MkDocs and published to GitHub Pages from `.github/workflows/docs.yml`.
+
 ## What the workflow does
 
 - runs tests with `uv run pytest`
@@ -12,6 +14,23 @@ This project uses an automated release workflow in `.github/workflows/release.ym
 - builds package artifacts with `uv build`
 - publishes to PyPI
 - builds and uploads standalone binaries
+
+## Documentation publishing
+
+The docs workflow:
+
+- installs the `docs` dependency group with `uv sync --group docs`
+- runs `uv run mkdocs build --strict`
+- uploads the generated `site/` folder as a GitHub Pages artifact
+- deploys the docs automatically on pushes to `main`
+
+Published site URL:
+
+- `https://klinvesta.github.io/ezmig/`
+
+To enable this in the repository settings, set **Pages** → **Build and deployment** → **Source** to **GitHub Actions**.
+
+You can also trigger the workflow manually with `workflow_dispatch`.
 
 ## Release rules
 
@@ -74,6 +93,13 @@ uvx --from python-semantic-release semantic-release --noop version
 ```
 
 Then inspect the planned bump, tag, and changelog output.
+
+To verify the docs locally:
+
+```bash
+uv sync --group docs
+uv run mkdocs serve
+```
 
 ## Build verification
 
