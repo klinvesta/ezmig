@@ -1,0 +1,128 @@
+[project]
+name = "ezmig"
+version = "0.1.0"
+description = "EZMig (Easy Migration) is a lightweight, SQL-first database migration tool designed for simplicity and CI/CD."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.24.1",
+]
+
+[project.optional-dependencies]
+oracle   = ["oracledb>=3.4.2"]
+postgres = ["psycopg2-binary>=2.9"]
+all      = ["oracledb>=3.4.2", "psycopg2-binary>=2.9"]
+
+[project.scripts]
+ezmig = "ezmig.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.10.9,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.12.0",
+    "pytest-mock>=3.15.1",
+    "ty>=0.0.24",
+]
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.6.11",
+]
+
+# -------------------
+# RUFF (lint + format)
+# -------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle
+    "F",  # pyflakes
+    "I",  # import sorting
+    "B",  # bugbear
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # handled by formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/ezmig/cli.py" = ["B008"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# -------------------
+# PYTEST
+# -------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+# -------------------
+# COVERAGE
+# -------------------
+[tool.coverage.run]
+branch = true
+source = ["ezmig"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
+# -------------------
+# SEMANTIC RELEASE
+# -------------------
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+tag_format = "v{version}"
+commit_parser = "conventional"
+allow_zero_version = true
+major_on_zero = false
+
+[tool.semantic_release.branches.main]
+match = "^main$"
+prerelease = false
+
+[tool.semantic_release.branches.dev]
+match = "^dev$"
+prerelease = true
+prerelease_token = "beta"
+
+[tool.semantic_release.commit_parser_options]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+parse_squash_commits = true
+ignore_merge_commits = true
+
+[tool.semantic_release.changelog]
+exclude_commit_patterns = [
+    '''build(?:\([^)]*?\))?: .+''',
+    '''chore(?:\([^)]*?\))?: .+''',
+    '''ci(?:\([^)]*?\))?: .+''',
+    '''docs(?:\([^)]*?\))?: .+''',
+    '''refactor(?:\([^)]*?\))?: .+''',
+    '''style(?:\([^)]*?\))?: .+''',
+    '''test(?:\([^)]*?\))?: .+''',
+    '''Initial [Cc]ommit.*''',
+]
+
+[tool.semantic_release.changelog.default_templates]
+changelog_file = "docs/changelog.md"
+output_format = "md"
+
+# -------------------
+# TY
+# -------------------
+[tool.ty.src]
+exclude = [
+    "tests",
+    "src/ezmig/adapters/oracle.py",
+    "src/ezmig/adapters/postgres.py",
+]

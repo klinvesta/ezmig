@@ -1,0 +1,29 @@
+site_name: EZMig
+site_description: SQL-first database migration tool documentation
+repo_url: https://github.com/klinvesta/ezmig
+repo_name: EZMig
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: installation.md
+    - Configuration: configuration.md
+    - Databases: databases.md
+  - Migrations: migrations.md
+  - CLI Reference: cli.md
+  - Contributing: contributing.md
+  - Development: development.md
+  - Deployment: deployment.md
+  - Changelog: changelog.md
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true

@@ -1,0 +1,11 @@
+[default]
+database = "dev"
+
+[migration.default]
+versioned = "./migrations/versioned"
+repeatable = "./migrations/repeatable"
+
+[database.dev]
+url = "${DATABASE_URL}"
+migration = "default"
+categories = { env = "dev" }
