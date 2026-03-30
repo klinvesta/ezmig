@@ -1,6 +1,6 @@
 [project]
 name = "ezmig"
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 description = "EZMig (Easy Migration) is a lightweight, SQL-first database migration tool designed for simplicity and CI/CD."
 readme = "README.md"
 requires-python = ">=3.11"
