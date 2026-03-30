@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import oracledb as oracledb_types
 
-from ezmig.adapters.base import DatabaseAdapter
+from ezmig.adapters.base import DatabaseAdapter, SQLExecutionError
 from ezmig.migration import Migration, MigrationState
 from ezmig.utils import parse_oracle_connection, split_sql
 
@@ -22,6 +22,32 @@ class OracleAdapter(DatabaseAdapter):
         "create or replace package",
         "create or replace trigger",
         "create or replace type",
+    )
+
+    _SQLPLUS_COMMAND_PREFIXES = (
+        "set",
+        "spool",
+        "prompt",
+        "pause",
+        "column",
+        "col",
+        "whenever",
+        "accept",
+        "define",
+        "undefine",
+        "connect",
+        "conn",
+        "host",
+        "@",
+        "@@",
+        "start",
+        "exit",
+        "quit",
+        "show",
+    )
+
+    _SQLPLUS_EXACT_COMMANDS = (
+        "clear",
     )
 
     def __init__(self, url: str) -> None:
@@ -157,17 +183,64 @@ class OracleAdapter(DatabaseAdapter):
         assert self.conn
         cur = self.conn.cursor()
 
-        statements = split_sql(sql)
+        cleaned_sql = self._strip_sqlplus_commands(sql)
+        statements = [
+            normalized
+            for statement in split_sql(cleaned_sql)
+            if (normalized := self._normalize_statement(statement))
+        ]
 
-        for stmt in statements:
-            normalized = self._normalize_statement(stmt)
-            if normalized:
-                cur.execute(normalized)
+        for index, statement in enumerate(statements, start=1):
+            try:
+                cur.execute(statement)
+            except Exception as error:
+                raise SQLExecutionError(
+                    message="Oracle statement execution failed",
+                    statement=statement,
+                    statement_index=index,
+                    total_statements=len(statements),
+                    original_error=error,
+                ) from error
+
+    @staticmethod
+    def _strip_sqlplus_commands(sql: str) -> str:
+        cleaned_lines: list[str] = []
+
+        for line in sql.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                cleaned_lines.append(line)
+                continue
+
+            lowered = stripped.lower()
+
+            if lowered.startswith("rem "):
+                continue
+
+            if lowered in OracleAdapter._SQLPLUS_EXACT_COMMANDS:
+                continue
+
+            if OracleAdapter._starts_with_sqlplus_command(lowered):
+                continue
+
+            cleaned_lines.append(line)
+
+        return "\n".join(cleaned_lines)
+
+    @staticmethod
+    def _starts_with_sqlplus_command(lowered_line: str) -> bool:
+        for prefix in OracleAdapter._SQLPLUS_COMMAND_PREFIXES:
+            if lowered_line == prefix or lowered_line.startswith(f"{prefix} "):
+                return True
+        return False
 
     @staticmethod
     def _normalize_statement(statement: str) -> str:
         normalized = statement.strip()
         if not normalized:
+            return ""
+
+        if OracleAdapter._is_comment_only_statement(normalized):
             return ""
 
         lowered = normalized.lower()
@@ -177,6 +250,45 @@ class OracleAdapter(DatabaseAdapter):
             return normalized[:-1].rstrip()
 
         return normalized
+
+    @staticmethod
+    def _is_comment_only_statement(statement: str) -> bool:
+        in_block_comment = False
+
+        for line in statement.splitlines():
+            remaining = line.strip()
+
+            while remaining:
+                if in_block_comment:
+                    end_idx = remaining.find("*/")
+                    if end_idx == -1:
+                        remaining = ""
+                        break
+                    remaining = remaining[end_idx + 2 :].lstrip()
+                    in_block_comment = False
+                    continue
+
+                if not remaining.strip(";").strip():
+                    remaining = ""
+                    break
+
+                lowered = remaining.lower()
+                if remaining.startswith("--") or lowered.startswith("rem "):
+                    remaining = ""
+                    break
+
+                if remaining.startswith("/*"):
+                    end_idx = remaining.find("*/", 2)
+                    if end_idx == -1:
+                        in_block_comment = True
+                        remaining = ""
+                        break
+                    remaining = remaining[end_idx + 2 :].lstrip()
+                    continue
+
+                return False
+
+        return True
 
     @staticmethod
     def _is_plsql_statement(lowered_statement: str) -> bool:

@@ -3,10 +3,17 @@ import time
 from fnmatch import fnmatch
 from pathlib import Path
 
-from .adapters.base import DatabaseAdapter
+from .adapters.base import DatabaseAdapter, SQLExecutionError
 from .migration import Migration, MigrationState
 
 logger = logging.getLogger("ezmig.runner")
+
+
+def _truncate_sql(statement: str, max_chars: int = 1200) -> str:
+    compact = statement.strip()
+    if len(compact) <= max_chars:
+        return compact
+    return f"{compact[:max_chars].rstrip()}\n... [truncated]"
 
 
 class MigrationRunner:
@@ -176,7 +183,10 @@ class MigrationRunner:
             logger.info(f"✔ Replayed {migration.filename} in {migration.duration_ms}ms")
         except Exception as error:
             adapter.rollback()
-            logger.error(f"✖ Failed to replay {migration.filename}: {error}")
+            if isinstance(error, SQLExecutionError):
+                self._log_sql_execution_error(action="replay", migration=migration, error=error)
+            else:
+                logger.error(f"✖ Failed to replay {migration.filename}: {error}")
             raise
 
     def _apply_single(self, migration: Migration):
@@ -199,8 +209,28 @@ class MigrationRunner:
             logger.info(f"✔ Applied {migration.filename} in {migration.duration_ms}ms")
         except Exception as e:
             adapter.rollback()
-            logger.error(f"✖ Failed to apply {migration.filename}: {e}")
+            if isinstance(e, SQLExecutionError):
+                self._log_sql_execution_error(action="apply", migration=migration, error=e)
+            else:
+                logger.error(f"✖ Failed to apply {migration.filename}: {e}")
             raise
+
+    def _log_sql_execution_error(
+        self,
+        *,
+        action: str,
+        migration: Migration,
+        error: SQLExecutionError,
+    ) -> None:
+        logger.error(
+            "✖ Failed to %s %s at statement %s/%s: %s\n--- SQL ---\n%s\n-----------",
+            action,
+            migration.filename,
+            error.statement_index,
+            error.total_statements,
+            error,
+            _truncate_sql(error.statement),
+        )
 
     def rollback(self, steps=1):
         """
@@ -247,8 +277,10 @@ class MigrationRunner:
                 adapter.execute(sql)
                 adapter.remove_migration(migration.checksum)
                 adapter.commit()
-            except Exception:
+            except Exception as error:
                 adapter.rollback()
+                if isinstance(error, SQLExecutionError):
+                    self._log_sql_execution_error(action="rollback", migration=migration, error=error)
                 raise
 
     def status(self) -> list[Migration]:

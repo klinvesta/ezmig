@@ -2,6 +2,7 @@ from pathlib import Path
 
 import typer
 
+from . import __version__
 from .adapters import create_adapter
 from .config import DatabaseTargetConfig, EZMigConfig, get_config_files, load_config
 from .logging import setup_logging
@@ -17,8 +18,22 @@ _include_user_config: bool = True
 _include_system_config: bool = True
 
 
+def _version_callback(value: bool) -> None:
+    """Print version and exit."""
+    if value:
+        typer.echo(f"ezmig {__version__}")
+        raise typer.Exit()
+
+
 @app.callback()
 def main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show version and exit",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
     config_file: Path | None = typer.Option(
         None,
