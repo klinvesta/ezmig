@@ -43,7 +43,17 @@ def split_sql(sql: str) -> list[str]:
     in_block = False  # True once we've seen a line that starts a block keyword
 
     # Keywords that open PL/SQL-style blocks
-    _BLOCK_STARTERS = ("begin", "declare", "create or replace")
+    _BLOCK_STARTERS = (
+        "begin",
+        "declare",
+        "create or replace procedure",
+        "create or replace function",
+        "create or replace package",
+        "create or replace package body",
+        "create or replace trigger",
+        "create or replace type",
+        "create or replace type body",
+    )
 
     for line in sql.splitlines():
         stripped = line.strip()

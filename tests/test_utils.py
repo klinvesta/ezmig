@@ -97,3 +97,32 @@ def test_comment_lines_preserved():
     assert len(result) == 1
     assert "-- create users" in result[0]
     assert "CREATE TABLE users" in result[0]
+
+
+def test_create_or_replace_context_is_not_treated_as_plsql_block():
+    sql = "create or replace context app_ctx using pkg_ref;\ncreate role role_primary;"
+    result = split_sql(sql)
+    assert result == [
+        "create or replace context app_ctx using pkg_ref;",
+        "create role role_primary;",
+    ]
+
+
+def test_oracle_role_grants_split_as_individual_statements():
+    sql = """
+create or replace context app_ctx using pkg_ref;
+create role role_primary;
+grant all privileges to role_primary;
+create role role_readonly;
+grant select any table to role_readonly;
+grant role_readonly to role_primary;
+"""
+    result = split_sql(sql)
+    assert result == [
+        "create or replace context app_ctx using pkg_ref;",
+        "create role role_primary;",
+        "grant all privileges to role_primary;",
+        "create role role_readonly;",
+        "grant select any table to role_readonly;",
+        "grant role_readonly to role_primary;",
+    ]
