@@ -152,6 +152,38 @@ class EZMigConfig:
 
         return self.database[candidates[0]]
 
+    def filter_database_targets(
+        self,
+        *,
+        group: str | None = None,
+        categories: dict[str, str] | None = None,
+    ) -> list[DatabaseTargetConfig]:
+        """Return database targets matching optional group or category filters."""
+        if group:
+            if group not in self.group:
+                available = ", ".join(self.group.keys())
+                raise ValueError(f"Group '{group}' not found. Available: {available}")
+
+            group_config = self.group[group]
+            if group_config.members:
+                return [
+                    self.database[name] for name in group_config.members if name in self.database
+                ]
+
+            if group_config.filters:
+                matching = self._filter_by_categories(group_config.filters)
+                return [self.database[name] for name in matching]
+
+            return []
+
+        if categories:
+            matching = self._filter_by_categories(
+                {key: [value] for key, value in categories.items()}
+            )
+            return [self.database[name] for name in matching]
+
+        return list(self.database.values())
+
     def _filter_by_categories(self, filters: dict[str, list[str]]) -> list[str]:
         """
         Filter database targets by category.

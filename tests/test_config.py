@@ -464,6 +464,119 @@ categories = { env = "dev" }
         config.resolve_database(categories={"env": "prod"})
 
 
+def test_filter_database_targets_by_group_members(tmp_path, monkeypatch):
+    """filter_database_targets returns group members in configured order."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "ezmig.toml").write_text(
+        """
+[database.dev]
+url = "sqlite:///dev.db"
+
+[database.uat]
+url = "sqlite:///uat.db"
+
+[database.prod]
+url = "sqlite:///prod.db"
+
+[group.nonprod]
+members = ["uat", "dev"]
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config()
+    result = config.filter_database_targets(group="nonprod")
+
+    assert [target.name for target in result] == ["uat", "dev"]
+
+
+def test_filter_database_targets_by_group_filters(tmp_path, monkeypatch):
+    """filter_database_targets returns targets matching group filters."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "ezmig.toml").write_text(
+        """
+[database.dev_uk]
+url = "sqlite:///dev_uk.db"
+categories = { env = "dev", location = "uk" }
+
+[database.dev_eu]
+url = "sqlite:///dev_eu.db"
+categories = { env = "dev", location = "eu" }
+
+[database.prod_eu]
+url = "sqlite:///prod_eu.db"
+categories = { env = "prod", location = "eu" }
+
+[group.dev_any]
+filters = { env = ["dev"] }
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config()
+    result = config.filter_database_targets(group="dev_any")
+
+    assert {target.name for target in result} == {"dev_uk", "dev_eu"}
+
+
+def test_filter_database_targets_by_categories(tmp_path, monkeypatch):
+    """filter_database_targets returns targets matching category key-value pairs."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "ezmig.toml").write_text(
+        """
+[database.dev_uk]
+url = "sqlite:///dev_uk.db"
+categories = { env = "dev", location = "uk" }
+
+[database.dev_eu]
+url = "sqlite:///dev_eu.db"
+categories = { env = "dev", location = "eu" }
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config()
+    result = config.filter_database_targets(categories={"env": "dev", "location": "eu"})
+
+    assert [target.name for target in result] == ["dev_eu"]
+
+
+def test_filter_database_targets_without_filters_returns_all(tmp_path, monkeypatch):
+    """filter_database_targets returns all targets when no filters are provided."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "ezmig.toml").write_text(
+        """
+[database.dev]
+url = "sqlite:///dev.db"
+
+[database.prod]
+url = "sqlite:///prod.db"
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config()
+    result = config.filter_database_targets()
+
+    assert {target.name for target in result} == {"dev", "prod"}
+
+
+def test_filter_database_targets_unknown_group_raises(tmp_path, monkeypatch):
+    """filter_database_targets raises ValueError for unknown group."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "ezmig.toml").write_text(
+        """
+[database.dev]
+url = "sqlite:///dev.db"
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config()
+    with pytest.raises(ValueError, match="Group 'missing' not found"):
+        config.filter_database_targets(group="missing")
+
+
 def test_validation_missing_url(tmp_path, monkeypatch):
     """Validation fails if database has no URL."""
     monkeypatch.chdir(tmp_path)

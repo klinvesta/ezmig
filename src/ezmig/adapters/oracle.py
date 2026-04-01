@@ -46,9 +46,7 @@ class OracleAdapter(DatabaseAdapter):
         "show",
     )
 
-    _SQLPLUS_EXACT_COMMANDS = (
-        "clear",
-    )
+    _SQLPLUS_EXACT_COMMANDS = ("clear",)
 
     def __init__(self, url: str) -> None:
         self.url = url

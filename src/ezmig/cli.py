@@ -6,8 +6,10 @@ from . import __version__
 from .adapters import create_adapter
 from .config import DatabaseTargetConfig, EZMigConfig, get_config_files, load_config
 from .logging import setup_logging
+from .migration import MigrationState
 from .runner import MigrationRunner
 from .scaffold import create_repeatable_migration, create_versioned_migration
+from .table import print_databases_table, print_migrations_table
 
 app = typer.Typer(help="ezmig - deterministic DB migrations")
 config_app = typer.Typer(help="Inspect and manage database targets")
@@ -79,6 +81,28 @@ def load_current_config() -> EZMigConfig:
     )
 
 
+def _parse_categories(category: list[str] | None) -> dict[str, str]:
+    """Parse CLI category arguments in key=value format."""
+    if not category:
+        return {}
+
+    parsed: dict[str, str] = {}
+    for item in category:
+        if "=" not in item:
+            raise typer.BadParameter(f"Invalid category format: {item}. Use key=value")
+
+        key, value = item.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+
+        if not key or not value:
+            raise typer.BadParameter(f"Invalid category format: {item}. Use key=value")
+
+        parsed[key] = value
+
+    return parsed
+
+
 def get_runner(
     config: EZMigConfig,
     database: str | None = None,
@@ -117,20 +141,13 @@ def resolve_target(
     group: str | None = None,
 ) -> DatabaseTargetConfig:
     """Resolve and return the selected database target."""
-    # Parse categories from CLI format: ["env=dev", "location=uk"]
-    categories_dict = {}
-    if category:
-        for cat in category:
-            if "=" not in cat:
-                raise typer.BadParameter(f"Invalid category format: {cat}. Use key=value")
-            key, value = cat.split("=", 1)
-            categories_dict[key] = value
+    categories = _parse_categories(category)
 
     # Resolve the target database
     try:
         target = config.resolve_database(
             name=database,
-            categories=categories_dict if categories_dict else None,
+            categories=categories if categories else None,
             group=group,
         )
     except ValueError as e:
@@ -164,10 +181,13 @@ def status(
     """Show applied and pending migrations"""
     config = load_current_config()
     runner = get_runner(config, database=database, category=category)
-    for s in runner.status():
-        if not show_all and s.state == "applied":
-            continue
-        typer.echo(f"{s.filename} ({s.type}) - {s.state}")
+    migrations = runner.status()
+
+    # Filter to pending only if --pending flag is used
+    if not show_all:
+        print_migrations_table(migrations, filter_state=MigrationState.PENDING)
+    else:
+        print_migrations_table(migrations)
 
 
 @app.command()
@@ -197,8 +217,7 @@ def plan(
     if not pending:
         typer.echo("No pending migrations")
     else:
-        for m in pending:
-            typer.echo(f"{m.filename} ({m.type}) - {m.state.value}")
+        print_migrations_table(pending)
 
 
 @app.command()
@@ -370,56 +389,21 @@ def config_list(
         typer.echo("No database targets configured")
         return
 
-    # Determine which databases to show
-    targets_to_show = []
-
-    if group:
-        if group not in config.group:
-            typer.echo(f"Error: Group '{group}' not found", err=True)
-            raise typer.Exit(code=1)
-        group_config = config.group[group]
-        if group_config.members:
-            targets_to_show = [
-                (name, config.database[name])
-                for name in group_config.members
-                if name in config.database
-            ]
-        elif group_config.filters:
-            matching = config._filter_by_categories(group_config.filters)
-            targets_to_show = [(name, config.database[name]) for name in matching]
-    elif category:
-        categories_dict = {}
-        for cat in category:
-            if "=" not in cat:
-                typer.echo(f"Error: Invalid category format: {cat}. Use key=value", err=True)
-                raise typer.Exit(code=1)
-            key, value = cat.split("=", 1)
-            categories_dict[key] = value
-        matching = config._filter_by_categories(categories_dict)
-        targets_to_show = [(name, config.database[name]) for name in matching]
-    else:
-        targets_to_show = list(config.database.items())
+    categories = _parse_categories(category)
+    try:
+        targets_to_show = config.filter_database_targets(
+            group=group,
+            categories=categories if categories else None,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
     if not targets_to_show:
         typer.echo("No database targets match the criteria")
         return
 
-    # Format and print header
-    typer.echo(f"{'Name':<20} {'URL (host)':<25} {'Env':<10} {'Location':<10} {'Default':<8}")
-    typer.echo("-" * 73)
-
-    for name, db_target in targets_to_show:
-        # Extract host from URL
-        url_host = _extract_url_host(db_target.url)
-
-        # Get env and location from categories
-        env = db_target.categories.get("env", "-")
-        location = db_target.categories.get("location", "-")
-
-        # Mark default
-        is_default = " *" if name == config.default_database else ""
-
-        typer.echo(f"{name:<20} {url_host:<25} {env:<10} {location:<10} {is_default:<8}")
+    print_databases_table(targets_to_show, default_database=config.default_database)
 
 
 @config_app.command("show")
@@ -504,29 +488,6 @@ def config_paths(
         if all_paths and not path.exists():
             suffix = " [missing]"
         typer.echo(f"{idx}. {path}{suffix}")
-
-
-def _extract_url_host(url: str) -> str:
-    """Extract and redact host from a database URL."""
-    try:
-        # Handle sqlite:/// URLs
-        if url.startswith("sqlite:"):
-            return "[sqlite]"
-        # Handle postgresql:// and other standard URLs
-        if "://" in url:
-            scheme, rest = url.split("://", 1)
-            # Remove credentials if present
-            if "@" in rest:
-                rest = rest.split("@", 1)[1]
-            # Extract host (and port if present)
-            if "/" in rest:
-                host_port = rest.split("/", 1)[0]
-            else:
-                host_port = rest
-            return host_port[:20]  # Truncate to fit
-        return url[:20]
-    except Exception:
-        return "[unknown]"
 
 
 # Register config sub-commands

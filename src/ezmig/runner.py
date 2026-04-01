@@ -280,7 +280,9 @@ class MigrationRunner:
             except Exception as error:
                 adapter.rollback()
                 if isinstance(error, SQLExecutionError):
-                    self._log_sql_execution_error(action="rollback", migration=migration, error=error)
+                    self._log_sql_execution_error(
+                        action="rollback", migration=migration, error=error
+                    )
                 raise
 
     def status(self) -> list[Migration]:
