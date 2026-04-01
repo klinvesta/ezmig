@@ -9,6 +9,8 @@ It is:
 - language-agnostic (just SQL)
 - easy to integrate into pipelines
 
+Documentation: https://klinvesta.github.io/ezmig/
+
 ---
 
 ## ✨ Philosophy
@@ -383,12 +385,9 @@ ezmig validate --database prod && ezmig apply --database prod
 
 ## 📚 Documentation
 
-Project documentation is now organized under `docs/` using MkDocs.
+Published docs: https://klinvesta.github.io/ezmig/
 
-- Site config: `mkdocs.yml`
-- Home: `docs/index.md`
-- Deployment guide: `docs/deployment.md`
-- Development guide: `docs/development.md`
+Project documentation is organized under `docs/` using MkDocs.
 
 Build docs locally:
 
