@@ -106,13 +106,14 @@ def _parse_categories(category: list[str] | None) -> dict[str, str]:
 def get_runner(
     config: EZMigConfig,
     database: str | None = None,
+    url: str | None = None,
     category: list[str] | None = None,
     group: str | None = None,
     migrations_path: Path | None = None,
     repeatables_path: Path | None = None,
 ) -> MigrationRunner:
     """Resolve a target database and return a MigrationRunner."""
-    target = resolve_target(config, database=database, category=category, group=group)
+    target = resolve_target(config, database=database, url=url, category=category, group=group)
 
     # Resolve migration paths
     migration_profile = config.migration.get(target.migration)
@@ -137,10 +138,25 @@ def get_runner(
 def resolve_target(
     config: EZMigConfig,
     database: str | None = None,
+    url: str | None = None,
     category: list[str] | None = None,
     group: str | None = None,
 ) -> DatabaseTargetConfig:
-    """Resolve and return the selected database target."""
+    """Resolve and return the selected database target.
+
+    If url is provided, creates an inline target bypassing config lookup.
+    Otherwise resolves by database name, category, or group.
+    """
+    # URL takes precedence - create an inline target
+    if url:
+        return DatabaseTargetConfig(
+            name="inline",
+            url=url,
+            migration="default",
+            categories={},
+            allow_replay=False,
+        )
+
     categories = _parse_categories(category)
 
     # Resolve the target database
@@ -160,13 +176,14 @@ def resolve_target(
 def rollback(
     steps: int = typer.Option(1, "--steps", "-n", help="Number of migrations to rollback"),
     database: str | None = typer.Option(None, "--database", help="Target database name"),
+    url: str | None = typer.Option(None, "--url", help="Database URL (overrides --database)"),
     category: list[str] | None = typer.Option(
         None, "--category", help="Filter by category (key=value)"
     ),
 ):
     """Rollback last N migrations"""
     config = load_current_config()
-    runner = get_runner(config, database=database, category=category)
+    runner = get_runner(config, database=database, url=url, category=category)
     runner.rollback(steps)
 
 
@@ -174,13 +191,14 @@ def rollback(
 def status(
     show_all: bool = typer.Option(True, "--all/--pending", help="Show all or pending only"),
     database: str | None = typer.Option(None, "--database", help="Target database name"),
+    url: str | None = typer.Option(None, "--url", help="Database URL (overrides --database)"),
     category: list[str] | None = typer.Option(
         None, "--category", help="Filter by category (key=value)"
     ),
 ):
     """Show applied and pending migrations"""
     config = load_current_config()
-    runner = get_runner(config, database=database, category=category)
+    runner = get_runner(config, database=database, url=url, category=category)
     migrations = runner.status()
 
     # Filter to pending only if --pending flag is used
@@ -199,6 +217,7 @@ def plan(
         None, "--repeatable", help="Override repeatable migrations path"
     ),
     database: str | None = typer.Option(None, "--database", help="Target database name"),
+    url: str | None = typer.Option(None, "--url", help="Database URL (overrides --database)"),
     category: list[str] | None = typer.Option(
         None, "--category", help="Filter by category (key=value)"
     ),
@@ -208,6 +227,7 @@ def plan(
     runner = get_runner(
         config,
         database=database,
+        url=url,
         category=category,
         migrations_path=versioned,
         repeatables_path=repeatable,
@@ -229,6 +249,7 @@ def apply(
         help="Allow replay/force apply for this command",
     ),
     database: str | None = typer.Option(None, "--database", help="Target database name"),
+    url: str | None = typer.Option(None, "--url", help="Database URL (overrides --database)"),
     category: list[str] | None = typer.Option(
         None, "--category", help="Filter by category (key=value)"
     ),
@@ -236,8 +257,8 @@ def apply(
 ):
     """Apply all pending migrations"""
     config = load_current_config()
-    target = resolve_target(config, database=database, category=category, group=group)
-    runner = get_runner(config, database=database, category=category, group=group)
+    target = resolve_target(config, database=database, url=url, category=category, group=group)
+    runner = get_runner(config, database=database, url=url, category=category, group=group)
 
     effective_allow_replay = allow_replay or target.allow_replay
     if force and not effective_allow_replay:
@@ -274,6 +295,7 @@ def replay(
     ),
     yes: bool = typer.Option(False, "--yes", help="Skip confirmation prompt"),
     database: str | None = typer.Option(None, "--database", help="Target database name"),
+    url: str | None = typer.Option(None, "--url", help="Database URL (overrides --database)"),
     category: list[str] | None = typer.Option(
         None, "--category", help="Filter by category (key=value)"
     ),
@@ -285,7 +307,7 @@ def replay(
         raise typer.Exit(code=1)
 
     config = load_current_config()
-    target = resolve_target(config, database=database, category=category, group=group)
+    target = resolve_target(config, database=database, url=url, category=category, group=group)
     effective_allow_replay = allow_replay or target.allow_replay
     if not effective_allow_replay:
         typer.echo(
@@ -309,7 +331,7 @@ def replay(
         if not confirmed:
             raise typer.Exit(code=1)
 
-    runner = get_runner(config, database=database, category=category, group=group)
+    runner = get_runner(config, database=database, url=url, category=category, group=group)
     runner.replay(
         versioned_patterns=migration,
         repeatable_patterns=repeatable,
@@ -321,6 +343,7 @@ def replay(
 @app.command()
 def validate(
     database: str | None = typer.Option(None, "--database", help="Target database name"),
+    url: str | None = typer.Option(None, "--url", help="Database URL (overrides --database)"),
     category: list[str] | None = typer.Option(
         None, "--category", help="Filter by category (key=value)"
     ),
@@ -328,7 +351,7 @@ def validate(
     """Validate migrations"""
     config = load_current_config()
     try:
-        runner = get_runner(config, database=database, category=category)
+        runner = get_runner(config, database=database, url=url, category=category)
         runner.validate()
         typer.echo("Validation passed")
     except RuntimeError as exc:
